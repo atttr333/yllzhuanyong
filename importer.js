@@ -198,9 +198,9 @@
 
   async function getPdfModule() {
     if (!pdfModulePromise) {
-      pdfModulePromise = import("./vendor/pdfjs-6.3.289.min.mjs").then((module) => {
+      pdfModulePromise = import("./pdfjs-6.3.289.min.mjs").then((module) => {
         module.GlobalWorkerOptions.workerSrc = new URL(
-          "./vendor/pdfjs-worker-6.3.289.min.mjs",
+          "./pdfjs-worker-6.3.289.min.mjs",
           document.baseURI,
         ).href;
         return module;
