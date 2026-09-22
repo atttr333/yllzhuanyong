@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="拾词——一个简洁、专注、数据保存在本地的背单词网页应用。"
+    />
+    <meta name="theme-color" content="#f3eee4" />
+    <title>拾词 · 本地背单词</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2320201d'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='31' fill='%23fffaf0'%3E%E6%8B%BE%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="noise" aria-hidden="true"></div>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="brand" data-route="home" aria-label="返回首页">
+          <span class="brand-mark" aria-hidden="true">拾</span>
+          <span>
+            <strong>拾词</strong>
+            <small>WORD BY WORD</small>
+          </span>
+        </button>
+
+        <nav class="main-nav" aria-label="主要导航">
+          <button class="nav-link is-active" data-route="home">今日</button>
+          <button class="nav-link" data-route="library">词库</button>
+        </nav>
+
+        <button class="icon-button" id="header-add-button" aria-label="添加单词">
+          <span aria-hidden="true">＋</span>
+        </button>
+      </header>
+
+      <main>
+        <section class="view is-active" id="home-view" aria-labelledby="home-title">
+          <div class="hero-grid">
+            <div class="hero-copy">
+              <p class="eyebrow" id="today-label">TODAY</p>
+              <h1 id="home-title">今天，<br /><em>拾起几个词。</em></h1>
+              <p class="hero-note">不追求堆积，只记住真正留下来的。</p>
+              <div class="hero-actions">
+                <button class="button button-primary" id="start-button">
+                  <span>开始本轮学习</span>
+                  <span aria-hidden="true">↗</span>
+                </button>
+                <button class="button button-quiet" id="review-button">只复习生词</button>
+              </div>
+            </div>
+
+            <aside class="today-card" aria-label="今日学习概览">
+              <div class="paper-clip" aria-hidden="true"></div>
+              <p>今日进度</p>
+              <strong id="today-progress-value">
+                <span id="today-studied">待定</span><small id="today-total-wrap" hidden> / <span id="total-words">0</span></small>
+              </strong>
+              <div class="progress-track" aria-hidden="true">
+                <span id="today-progress"></span>
+              </div>
+              <div class="today-meta">
+                <span><b id="today-known">0</b> 认识</span>
+                <span><b id="today-unknown">0</b> 待复习</span>
+              </div>
+            </aside>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="panel stat-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">YOUR RHYTHM</p>
+                  <h2>学习节奏</h2>
+                </div>
+                <span class="stamp" aria-hidden="true">LOCAL<br />ONLY</span>
+              </div>
+              <div class="stat-list">
+                <div><span>词库总量</span><strong id="stat-total">0</strong></div>
+                <div><span>已掌握</span><strong id="stat-mastered">0</strong></div>
+                <div><span>需要复习</span><strong id="stat-review">0</strong></div>
+              </div>
+            </article>
+
+            <article class="panel recent-panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="eyebrow">RECENT WORDS</p>
+                  <h2>最近添加</h2>
+                </div>
+                <div class="recent-header-actions">
+                  <button class="text-button" id="toggle-recent-manage">管理</button>
+                  <button class="text-button" data-route="library">查看词库 →</button>
+                </div>
+              </div>
+              <div class="recent-content" id="recent-content">
+                <div id="recent-list" class="recent-list"></div>
+                <button class="recent-preview-cover" id="recent-preview-cover" type="button">
+                  <span aria-hidden="true">◉</span>
+                  <strong>点击预览</strong>
+                  <small>显示最近添加的单词</small>
+                </button>
+              </div>
+              <div class="recent-bulk-bar" id="recent-bulk-bar" hidden>
+                <span id="recent-selected-count">已选择 0 个</span>
+                <button class="button button-danger" id="delete-selected-recent" disabled>删除所选</button>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="library-view" aria-labelledby="library-title">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">YOUR COLLECTION</p>
+              <h1 id="library-title">我的词库</h1>
+              <p>每一个词，都有它被记住的时刻。</p>
+            </div>
+            <button class="button button-primary" id="library-add-button">＋ 添加单词</button>
+          </div>
+
+          <div class="library-toolbar">
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <span class="sr-only">搜索单词或释义</span>
+              <input id="search-input" type="search" placeholder="搜索单词或释义…" autocomplete="off" />
+            </label>
+            <div class="filter-group" role="group" aria-label="筛选词库">
+              <button class="filter-chip is-active" data-filter="all">全部</button>
+              <button class="filter-chip" data-filter="mastered">已掌握</button>
+              <button class="filter-chip" data-filter="review">待复习</button>
+            </div>
+          </div>
+
+          <div class="word-table-wrap">
+            <table class="word-table">
+              <thead>
+                <tr>
+                  <th>单词</th>
+                  <th>释义</th>
+                  <th>状态</th>
+                  <th>练习</th>
+                  <th><span class="sr-only">操作</span></th>
+                </tr>
+              </thead>
+              <tbody id="word-table-body"></tbody>
+            </table>
+            <div class="empty-state" id="library-empty" hidden>
+              <span aria-hidden="true">Aa</span>
+              <h2>这里还没有单词</h2>
+              <p>添加第一个想记住的词，开始建立你的词库。</p>
+              <button class="button button-primary" id="empty-add-button">添加第一个单词</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="study-view" aria-labelledby="study-title">
+          <div class="study-topline">
+            <button class="text-button" id="exit-study-button">← 退出学习</button>
+            <p><span id="study-index">1</span> / <span id="study-total">1</span></p>
+            <span class="study-mode" id="study-mode">全部词汇</span>
+          </div>
+          <div class="study-progress" aria-hidden="true"><span id="study-progress"></span></div>
+
+          <div class="study-stage">
+            <p class="eyebrow" id="study-title">WRITE THE WORD</p>
+            <article class="flashcard prompt-card" id="flashcard" aria-label="中文释义">
+              <span class="card-corner" aria-hidden="true">01</span>
+              <span class="card-face card-front">
+                <small>中文释义</small>
+                <strong id="study-meaning">意外发现美好事物的能力</strong>
+                <span class="prompt-hint">写出此前录入的英文单词</span>
+              </span>
+            </article>
+
+            <form class="study-answer-form" id="study-answer-form">
+              <label for="study-answer-input">对应的英文</label>
+              <div>
+                <input
+                  id="study-answer-input"
+                  type="text"
+                  autocomplete="off"
+                  autocapitalize="none"
+                  spellcheck="false"
+                  placeholder="在这里输入英文单词"
+                  required
+                />
+                <button class="button button-primary" id="check-answer-button" type="submit">检查答案</button>
+              </div>
+              <p id="answer-check-status" aria-live="polite">按 Enter 提交答案</p>
+            </form>
+          </div>
+        </section>
+
+        <section class="view" id="result-view" aria-labelledby="result-title">
+          <div class="result-card">
+            <div class="result-seal" aria-hidden="true">DONE</div>
+            <p class="eyebrow">ROUND COMPLETE</p>
+            <h1 id="result-title">这一轮，完成了。</h1>
+            <p>记忆不是一次完成的。那些暂时陌生的词，下次还会回来。</p>
+            <div class="result-numbers">
+              <div><strong id="result-total">0</strong><span>本轮单词</span></div>
+              <div><strong id="result-known">0</strong><span>已经认识</span></div>
+              <div><strong id="result-unknown">0</strong><span>需要复习</span></div>
+            </div>
+            <div class="result-actions">
+              <button class="button button-primary" id="study-again-button">再学一轮</button>
+              <button class="button button-quiet" data-route="home">返回今日</button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="word-dialog" id="word-dialog" aria-labelledby="dialog-title">
+      <form id="word-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">NEW ENTRY</p>
+            <h2 id="dialog-title">添加单词</h2>
+          </div>
+          <button type="button" class="dialog-close" id="dialog-close" aria-label="关闭">×</button>
+        </div>
+        <input type="hidden" id="word-id" />
+        <div id="import-entry-section">
+          <button type="button" class="import-entry-button" id="open-import-button">
+            <span class="import-entry-icon" aria-hidden="true">⇧</span>
+            <span>
+              <strong>从文件批量导入</strong>
+              <small>支持 PPTX · PDF · DOCX</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </button>
+          <div class="manual-divider"><span>或手动添加一条</span></div>
+        </div>
+        <label>
+          <span>单词</span>
+          <input id="word-input" name="word" required maxlength="80" autocomplete="off" placeholder="例如：wander" />
+        </label>
+        <label>
+          <span>释义</span>
+          <textarea id="meaning-input" name="meaning" required maxlength="300" rows="4" placeholder="例如：漫步；闲逛"></textarea>
+        </label>
+        <p class="form-error" id="form-error" role="alert"></p>
+        <button class="button button-primary dialog-submit" type="submit">保存到词库</button>
+      </form>
+    </dialog>
+
+    <dialog class="import-dialog" id="import-dialog" aria-labelledby="import-dialog-title">
+      <div class="import-dialog-inner">
+        <div class="dialog-heading import-dialog-heading">
+          <div>
+            <p class="eyebrow">IMPORT FILE</p>
+            <h2 id="import-dialog-title">从文件导入</h2>
+          </div>
+          <button type="button" class="dialog-close" id="import-dialog-close" aria-label="关闭">×</button>
+        </div>
+
+        <section id="import-upload-view">
+          <input
+            class="sr-only"
+            id="import-file-input"
+            type="file"
+            accept=".pptx,.pdf,.docx,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          />
+          <label class="file-drop-zone" id="file-drop-zone" for="import-file-input">
+            <span class="file-drop-icon" aria-hidden="true">↥</span>
+            <strong>选择文件或拖到这里</strong>
+            <span>PPTX、PDF、DOCX</span>
+          </label>
+          <div class="import-rules">
+            <strong>文件中的单词如何排列？</strong>
+            <p>推荐使用双列表格：第一列放单词，第二列放释义。普通文本请用 Tab、<code>::</code> 或 <code>|</code> 分隔。</p>
+            <p>旧版 <code>.ppt</code> 和 <code>.doc</code> 请先在 Office 中另存为 <code>.pptx</code> 或 <code>.docx</code>。</p>
+            <p>当前读取文档中的文字层，不识别扫描图片中的文字。</p>
+          </div>
+          <p class="import-error" id="import-error" role="alert"></p>
+        </section>
+
+        <section class="import-loading" id="import-loading" hidden aria-live="polite">
+          <span aria-hidden="true"></span>
+          <strong>正在读取文件…</strong>
+          <p>文件只在当前浏览器内处理，不会上传到服务器。</p>
+        </section>
+
+        <section id="import-preview-view" hidden>
+          <div class="import-file-summary">
+            <div>
+              <span class="import-file-type" id="import-file-type">DOCX</span>
+              <span>
+                <strong id="import-file-name">词库.docx</strong>
+                <small id="import-file-detail">识别到 0 条记录</small>
+              </span>
+            </div>
+            <button type="button" class="text-button" id="choose-another-file">重新选择</button>
+          </div>
+          <div class="import-preview-head">
+            <p>请检查并修改识别结果</p>
+            <span id="import-valid-count">0 条可导入</span>
+          </div>
+          <div class="import-preview-list" id="import-preview-list"></div>
+          <div class="import-footer">
+            <p>只有勾选且内容完整的记录会写入词库。</p>
+            <button type="button" class="button button-primary" id="confirm-import-button" disabled>导入到词库</button>
+          </div>
+        </section>
+      </div>
+    </dialog>
+
+    <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title">
+      <form method="dialog">
+        <p class="eyebrow">REMOVE WORD</p>
+        <h2 id="confirm-title">删除这个单词？</h2>
+        <p id="confirm-message">删除后，该单词的学习记录也会一并移除。</p>
+        <div>
+          <button class="button button-quiet" value="cancel">保留</button>
+          <button class="button button-danger" id="confirm-delete" value="confirm">删除</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="answer-feedback-dialog" id="answer-feedback-dialog" aria-labelledby="answer-feedback-title">
+      <div class="answer-feedback-card">
+        <span class="answer-feedback-mark" id="answer-feedback-mark" aria-hidden="true">✓</span>
+        <p class="eyebrow" id="answer-feedback-label">EXACT MATCH</p>
+        <h2 id="answer-feedback-title">棒棒哒，完全正确。</h2>
+        <p id="answer-feedback-message">你写出了此前录入的目标词。</p>
+        <div class="answer-target" id="answer-target" hidden>
+          <span>我们要的是</span>
+          <strong id="answer-target-word">serendipity</strong>
+        </div>
+        <button class="button button-primary" id="next-question-button" type="button">下一题 →</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="vendor/jszip-3.10.2.min.js"></script>
+    <script src="core.js"></script>
+    <script src="importer.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
