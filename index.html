@@ -41,6 +41,14 @@
               <p class="eyebrow" id="today-label">TODAY</p>
               <h1 id="home-title">今天，<br /><em>拾起几个词。</em></h1>
               <p class="hero-note">不追求堆积，只记住真正留下来的。</p>
+              <div class="book-switcher">
+                <label for="book-select">
+                  <span>当前单词本</span>
+                  <select id="book-select" aria-label="选择当前单词本"></select>
+                </label>
+                <button class="text-button" id="new-book-button" type="button">＋ 新建单词本</button>
+                <p id="save-indicator" role="status">数据仅保存在当前浏览器</p>
+              </div>
               <div class="hero-actions">
                 <button class="button button-primary" id="start-button">
                   <span>开始本轮学习</span>
@@ -114,9 +122,12 @@
             <div>
               <p class="eyebrow">YOUR COLLECTION</p>
               <h1 id="library-title">我的词库</h1>
-              <p>每一个词，都有它被记住的时刻。</p>
+              <p id="library-book-note">每一个词，都有它被记住的时刻。</p>
             </div>
-            <button class="button button-primary" id="library-add-button">＋ 添加单词</button>
+            <div class="library-heading-actions">
+              <button class="button button-quiet" id="export-words-button">⇩ 导出单词表</button>
+              <button class="button button-primary" id="library-add-button">＋ 添加单词</button>
+            </div>
           </div>
 
           <div class="library-toolbar">
@@ -227,7 +238,7 @@
             <span class="import-entry-icon" aria-hidden="true">⇧</span>
             <span>
               <strong>从文件批量导入</strong>
-              <small>支持 PPTX · PDF · DOCX</small>
+              <small>支持 PPTX · PDF · DOCX · TXT</small>
             </span>
             <span aria-hidden="true">→</span>
           </button>
@@ -246,6 +257,24 @@
       </form>
     </dialog>
 
+    <dialog class="word-dialog book-dialog" id="book-dialog" aria-labelledby="book-dialog-title">
+      <form id="book-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">WORD BOOK</p>
+            <h2 id="book-dialog-title">新建单词本</h2>
+          </div>
+          <button type="button" class="dialog-close" id="book-dialog-close" aria-label="关闭">×</button>
+        </div>
+        <label>
+          <span>单词本名称</span>
+          <input id="book-name-input" required maxlength="40" autocomplete="off" placeholder="例如：雅思核心词汇" />
+        </label>
+        <p class="form-error" id="book-form-error" role="alert"></p>
+        <button class="button button-primary dialog-submit" type="submit">创建并使用</button>
+      </form>
+    </dialog>
+
     <dialog class="import-dialog" id="import-dialog" aria-labelledby="import-dialog-title">
       <div class="import-dialog-inner">
         <div class="dialog-heading import-dialog-heading">
@@ -261,12 +290,12 @@
             class="sr-only"
             id="import-file-input"
             type="file"
-            accept=".pptx,.pdf,.docx,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept=".pptx,.pdf,.docx,.txt,text/plain,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
           <label class="file-drop-zone" id="file-drop-zone" for="import-file-input">
             <span class="file-drop-icon" aria-hidden="true">↥</span>
             <strong>选择文件或拖到这里</strong>
-            <span>PPTX、PDF、DOCX</span>
+            <span>PPTX、PDF、DOCX、TXT</span>
           </label>
           <div class="import-rules">
             <strong>文件中的单词如何排列？</strong>
@@ -298,6 +327,23 @@
             <p>请检查并修改识别结果</p>
             <span id="import-valid-count">0 条可导入</span>
           </div>
+          <section class="import-book-routing" id="import-book-routing" hidden>
+            <p class="eyebrow">WORD BOOK DETECTED</p>
+            <strong id="import-book-routing-title"></strong>
+            <p id="import-book-routing-message"></p>
+            <div class="import-book-routing-actions" id="import-book-routing-actions" hidden>
+              <button type="button" class="button button-quiet is-active" id="import-book-merge">保留现有并合并</button>
+              <button type="button" class="button button-danger" id="import-book-replace">覆盖现有单词本</button>
+            </div>
+          </section>
+          <div class="import-translation-tools">
+            <div>
+              <strong>缺少中文释义？</strong>
+              <p>仅在点击后，把缺失释义的英文词发送至在线翻译服务生成中文，可在导入前修改。</p>
+            </div>
+            <button type="button" class="button button-quiet" id="auto-translate-button" disabled>自动补全中文</button>
+          </div>
+          <p class="import-translation-status" id="import-translation-status" role="status"></p>
           <div class="import-preview-list" id="import-preview-list"></div>
           <div class="import-footer">
             <p>只有勾选且内容完整的记录会写入词库。</p>

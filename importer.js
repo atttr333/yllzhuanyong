@@ -5,7 +5,9 @@
     docx: "DOCX",
     pptx: "PPTX",
     pdf: "PDF",
+    txt: "TXT",
   };
+  const BOOK_MARKER_PATTERN = /\/\/RaBt\/\/\\\*¥z&%w\\@n#p¥!y&\^\$\/\/([^/\r\n]+)\/\//;
   const EXPLICIT_SEPARATORS = ["\t", "::", "｜", "|"];
   let pdfModulePromise = null;
 
@@ -18,12 +20,28 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
+  function stripLeadingSerial(value) {
+    return clean(value).replace(
+      /^(?:(?:\(?\d{1,4}\)?)(?:\s*[.．、:：\-)]\s*|\s+))+(?=[A-Za-z])/,
+      "",
+    );
+  }
+
+  function normalizedWord(value) {
+    return stripLeadingSerial(value);
+  }
+
+  function standaloneEnglishWord(value) {
+    const word = normalizedWord(value);
+    return /^[A-Za-z]+(?:['-][A-Za-z]+)*$/.test(word) ? word : "";
+  }
+
   function splitExplicitLine(line) {
     const source = String(line || "").trim();
     for (const separator of EXPLICIT_SEPARATORS) {
       const index = source.indexOf(separator);
       if (index <= 0) continue;
-      const word = clean(source.slice(0, index));
+      const word = normalizedWord(source.slice(0, index));
       const meaning = clean(source.slice(index + separator.length));
       if (word && meaning) return { word, meaning };
     }
@@ -35,7 +53,12 @@
     blocks.forEach((block) => {
       String(block || "").split(/\r?\n/).forEach((line) => {
         const pair = splitExplicitLine(line);
-        if (pair) rows.push({ ...pair, source: sourceLabel });
+        if (pair) {
+          rows.push({ ...pair, source: sourceLabel });
+          return;
+        }
+        const word = standaloneEnglishWord(line);
+        if (word) rows.push({ word, meaning: "", source: sourceLabel });
       });
     });
     return rows;
@@ -81,7 +104,12 @@
         .map(cellText)
         .filter(Boolean);
       if (cells.length >= 2) {
-        rows.push({ word: cells[0], meaning: clean(cells.slice(1).join(" ")), source: sourceLabel });
+        const word = normalizedWord(cells[0]);
+        const meaning = clean(cells.slice(1).join(" "));
+        if (word && meaning) rows.push({ word, meaning, source: sourceLabel });
+      } else if (cells.length === 1) {
+        const word = standaloneEnglishWord(cells[0]);
+        if (word) rows.push({ word, meaning: "", source: sourceLabel });
       }
     });
     return rows;
@@ -94,18 +122,45 @@
   }
 
   function uniqueRows(rows) {
-    const seen = new Set();
-    return rows.filter((row) => {
-      const word = clean(row.word);
+    const rowsByWord = new Map();
+    rows.forEach((row) => {
+      const word = normalizedWord(row.word);
       const meaning = clean(row.meaning);
-      if (!word || !meaning) return false;
-      const key = `${word.toLocaleLowerCase()}\u0000${meaning.toLocaleLowerCase()}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      row.word = word;
-      row.meaning = meaning;
-      return true;
+      if (!word) return;
+      const key = word.toLocaleLowerCase();
+      const existing = rowsByWord.get(key);
+      if (!existing || (!existing.meaning && meaning)) {
+        rowsByWord.set(key, { ...row, word, meaning });
+      }
     });
+    return [...rowsByWord.values()];
+  }
+
+  function bookNameFromText(text) {
+    const match = String(text || "").match(BOOK_MARKER_PATTERN);
+    return match ? clean(match[1]) : "";
+  }
+
+  function rowsFromShiciExport(text) {
+    const lines = String(text || "").replace(/^\uFEFF/, "").split(/\r?\n/);
+    const rows = [];
+    for (let index = 0; index < lines.length - 1; index += 1) {
+      const wordMatch = lines[index].match(/^\s*\d{3}\s*[·.．]\s*([A-Za-z]+(?:['-][A-Za-z]+)*)\s*$/);
+      const meaningMatch = lines[index + 1].match(/^\s*(?:释义|中文释义)[：:]\s*(.+)\s*$/);
+      if (!wordMatch || !meaningMatch) continue;
+      rows.push({ word: wordMatch[1], meaning: meaningMatch[1], source: "拾词单词表" });
+      index += 1;
+    }
+    return rows;
+  }
+
+  async function parseTxt(file) {
+    const text = await file.text();
+    const entries = uniqueRows([
+      ...rowsFromShiciExport(text),
+      ...rowsFromTextBlocks(String(text).replace(/^\uFEFF/, "").split(/\r?\n/), "TXT 文本"),
+    ]);
+    return { entries, bookName: bookNameFromText(text) };
   }
 
   async function parseDocx(arrayBuffer) {
@@ -179,6 +234,8 @@
 
     const explicit = splitExplicitLine(visibleItems.map((item) => item.text).join(" "));
     if (explicit) return { ...explicit, source: sourceLabel };
+    const standaloneWord = standaloneEnglishWord(visibleItems.map((item) => item.text).join(" "));
+    if (standaloneWord) return { word: standaloneWord, meaning: "", source: sourceLabel };
     if (visibleItems.length < 2) return null;
 
     let splitIndex = -1;
@@ -191,7 +248,7 @@
       }
     }
     if (splitIndex < 0 || largestGap < 12) return null;
-    const word = clean(visibleItems.slice(0, splitIndex + 1).map((item) => item.text).join(" "));
+    const word = normalizedWord(visibleItems.slice(0, splitIndex + 1).map((item) => item.text).join(" "));
     const meaning = clean(visibleItems.slice(splitIndex + 1).map((item) => item.text).join(" "));
     return word && meaning ? { word, meaning, source: sourceLabel } : null;
   }
@@ -237,16 +294,24 @@
       }
       throw new Error("请选择 PPTX、PDF 或 DOCX 文件");
     }
+    if (extension === "txt") {
+      const parsed = await parseTxt(file);
+      return { ...parsed, format: SUPPORTED[extension], fileName: file.name };
+    }
     const arrayBuffer = await file.arrayBuffer();
     let entries;
     if (extension === "docx") entries = await parseDocx(arrayBuffer);
     if (extension === "pptx") entries = await parsePptx(arrayBuffer);
     if (extension === "pdf") entries = await parsePdf(arrayBuffer);
-    return { entries, format: SUPPORTED[extension], fileName: file.name };
+    return { entries, format: SUPPORTED[extension], fileName: file.name, bookName: "" };
   }
 
   globalScope.WordImporter = {
     parseFile,
+    stripLeadingSerial,
+    standaloneEnglishWord,
+    bookNameFromText,
+    rowsFromShiciExport,
     splitExplicitLine,
     rowsFromTextBlocks,
   };

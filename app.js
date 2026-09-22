@@ -16,6 +16,11 @@
     routeButtons: [...document.querySelectorAll("[data-route]")],
     headerAdd: document.querySelector("#header-add-button"),
     libraryAdd: document.querySelector("#library-add-button"),
+    exportWords: document.querySelector("#export-words-button"),
+    bookSelect: document.querySelector("#book-select"),
+    newBookButton: document.querySelector("#new-book-button"),
+    saveIndicator: document.querySelector("#save-indicator"),
+    libraryBookNote: document.querySelector("#library-book-note"),
     emptyAdd: document.querySelector("#empty-add-button"),
     wordDialog: document.querySelector("#word-dialog"),
     wordForm: document.querySelector("#word-form"),
@@ -25,6 +30,11 @@
     wordInput: document.querySelector("#word-input"),
     meaningInput: document.querySelector("#meaning-input"),
     formError: document.querySelector("#form-error"),
+    bookDialog: document.querySelector("#book-dialog"),
+    bookDialogClose: document.querySelector("#book-dialog-close"),
+    bookForm: document.querySelector("#book-form"),
+    bookNameInput: document.querySelector("#book-name-input"),
+    bookFormError: document.querySelector("#book-form-error"),
     importEntrySection: document.querySelector("#import-entry-section"),
     openImportButton: document.querySelector("#open-import-button"),
     importDialog: document.querySelector("#import-dialog"),
@@ -39,6 +49,14 @@
     importFileName: document.querySelector("#import-file-name"),
     importFileDetail: document.querySelector("#import-file-detail"),
     importValidCount: document.querySelector("#import-valid-count"),
+    importBookRouting: document.querySelector("#import-book-routing"),
+    importBookRoutingTitle: document.querySelector("#import-book-routing-title"),
+    importBookRoutingMessage: document.querySelector("#import-book-routing-message"),
+    importBookRoutingActions: document.querySelector("#import-book-routing-actions"),
+    importBookMerge: document.querySelector("#import-book-merge"),
+    importBookReplace: document.querySelector("#import-book-replace"),
+    autoTranslateButton: document.querySelector("#auto-translate-button"),
+    importTranslationStatus: document.querySelector("#import-translation-status"),
     importPreviewList: document.querySelector("#import-preview-list"),
     chooseAnotherFile: document.querySelector("#choose-another-file"),
     confirmImportButton: document.querySelector("#confirm-import-button"),
@@ -99,6 +117,9 @@
   const synonymCache = new Map();
   let toastTimer = null;
   let importRows = [];
+  let importTranslationPending = false;
+  let importBookName = "";
+  let importBookMode = "current";
 
   function loadState() {
     try {
@@ -111,7 +132,7 @@
     let initial = Core.createEmptyState();
     sampleWords.forEach(([word, meaning], index) => {
       const date = new Date(Date.now() - index * 60000);
-      initial = Core.addWord(initial, word, meaning, date);
+      initial = Core.addWord(initial, word, meaning, initial.selectedBookId, date);
     });
     return initial;
   }
@@ -119,6 +140,8 @@
   function saveState() {
     try {
       localStorage.setItem(Core.STORAGE_KEY, JSON.stringify(state));
+      const time = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(new Date());
+      elements.saveIndicator.textContent = `已保存到此浏览器 · ${time}`;
     } catch (error) {
       showToast("保存失败，请检查浏览器存储权限");
       console.error("无法保存本地词库：", error);
@@ -135,8 +158,30 @@
     if (route === "library") renderLibrary();
   }
 
+  function currentBook() {
+    return state.books.find((book) => book.id === state.selectedBookId) || state.books[0];
+  }
+
+  function currentWords() {
+    return Core.wordsInBook(state, currentBook().id);
+  }
+
+  function renderBookControls() {
+    const book = currentBook();
+    elements.bookSelect.replaceChildren();
+    state.books.forEach((item) => {
+      const option = document.createElement("option");
+      option.value = item.id;
+      option.textContent = item.name;
+      option.selected = item.id === book.id;
+      elements.bookSelect.append(option);
+    });
+    elements.libraryBookNote.textContent = `当前显示「${book.name}」中的单词。每本单词本独立学习、导入与导出。`;
+  }
+
   function renderDashboard() {
-    const stats = Core.statsOf(state);
+    renderBookControls();
+    const stats = Core.statsOf(state, new Date(), currentBook().id);
     setText("#stat-total", stats.total);
     setText("#stat-mastered", stats.mastered);
     setText("#stat-review", stats.review);
@@ -170,7 +215,7 @@
     elements.recentContent.classList.toggle("is-revealed", recentRevealed || recentManageMode);
     elements.toggleRecentManage.textContent = recentManageMode ? "完成" : "管理";
     elements.recentBulkBar.hidden = !recentManageMode;
-    const recent = [...state.words]
+    const recent = [...currentWords()]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 3);
     if (!recent.length) {
@@ -225,11 +270,63 @@
   }
 
   function renderLibrary() {
-    const words = Core.filterWords(state.words, elements.searchInput.value, activeFilter);
+    renderBookControls();
+    const words = Core.filterWords(currentWords(), elements.searchInput.value, activeFilter);
     elements.wordTableBody.replaceChildren();
     elements.libraryEmpty.hidden = words.length > 0;
     document.querySelector(".word-table").hidden = words.length === 0;
     words.forEach((word) => elements.wordTableBody.append(createWordRow(word)));
+  }
+
+  function exportWordList() {
+    const book = currentBook();
+    const words = currentWords();
+    if (!words.length) {
+      showToast("词库为空，暂时没有可导出的单词");
+      return;
+    }
+
+    const createdAt = new Date();
+    const dateText = createdAt.toLocaleDateString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).replaceAll("/", "-");
+    const rows = words.map((word, index) => {
+      const status = Core.statusOf(word) === "mastered" ? "已掌握" : "待复习";
+      return [
+        `${String(index + 1).padStart(3, "0")} · ${Core.cleanWord(word.word)}`,
+        `    释义：${word.meaning}`,
+        `    学习状态：${status}`,
+      ].join("\n");
+    });
+    const content = [
+      "╭────────────────────────────────────╮",
+      "│            拾词 · 单词表            │",
+      "│             WORD BY WORD             │",
+      "╰────────────────────────────────────╯",
+      "",
+      `  单词本   ${book.name}`,
+      `  导出日期 ${dateText}`,
+      `  收录词数 ${words.length} 个`,
+      "",
+      "──────────────────────────────────────",
+      rows.join(`\n\n${"──────────────────────────────────────"}\n`),
+      "",
+      "──────────────────────────────────────",
+      `//RaBt//\\*¥z&%w\\@n#p¥!y&^$//${book.name}//`,
+      "",
+    ].join("\n");
+    const file = new Blob([`\uFEFF${content}`], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `拾词-${book.name}-单词表-${dateText}.txt`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast(`已导出「${book.name}」的 ${words.length} 个单词`);
   }
 
   function createWordRow(word) {
@@ -290,14 +387,64 @@
     setTimeout(() => elements.wordInput.focus(), 0);
   }
 
+  function openBookDialog() {
+    elements.bookForm.reset();
+    elements.bookFormError.textContent = "";
+    elements.bookDialog.showModal();
+    setTimeout(() => elements.bookNameInput.focus(), 0);
+  }
+
   function resetImportDialog() {
     importRows = [];
+    importBookName = "";
+    importBookMode = "current";
     elements.importFileInput.value = "";
     elements.importError.textContent = "";
     elements.importUploadView.hidden = false;
     elements.importLoading.hidden = true;
     elements.importPreviewView.hidden = true;
     elements.importPreviewList.replaceChildren();
+    elements.importTranslationStatus.textContent = "";
+    elements.autoTranslateButton.disabled = true;
+    elements.autoTranslateButton.textContent = "自动补全中文";
+    elements.importBookRouting.hidden = true;
+    elements.importBookRoutingActions.hidden = true;
+  }
+
+  function findBookByName(name) {
+    const normalized = String(name || "").trim().toLocaleLowerCase();
+    return state.books.find((book) => book.name.toLocaleLowerCase() === normalized) || null;
+  }
+
+  function importTargetBook() {
+    return importBookName ? findBookByName(importBookName) : currentBook();
+  }
+
+  function importTargetWords() {
+    const targetBook = importTargetBook();
+    if (!targetBook || importBookMode === "new" || importBookMode === "replace") return [];
+    return Core.wordsInBook(state, targetBook.id);
+  }
+
+  function renderImportBookRouting() {
+    if (!importBookName) {
+      elements.importBookRouting.hidden = true;
+      return;
+    }
+    const existing = findBookByName(importBookName);
+    elements.importBookRouting.hidden = false;
+    elements.importBookRoutingTitle.textContent = `检测到单词本：「${importBookName}」`;
+    elements.importBookRoutingActions.hidden = !existing;
+    if (!existing) {
+      importBookMode = "new";
+      elements.importBookRoutingMessage.textContent = "导入确认后会自动新建这本单词本，并把文件中的单词保存进去。";
+      return;
+    }
+    elements.importBookRoutingMessage.textContent = importBookMode === "replace"
+      ? "将清空现有同名单词本的词，再写入文件中的内容。"
+      : "会保留现有单词，再导入文件中尚未存在的单词。";
+    elements.importBookMerge.classList.toggle("is-active", importBookMode !== "replace");
+    elements.importBookReplace.classList.toggle("is-active", importBookMode === "replace");
   }
 
   function openImportDialog() {
@@ -316,11 +463,14 @@
       const result = await window.WordImporter.parseFile(file);
       importRows = result.entries.map((entry) => ({ ...entry, selected: true }));
       if (!importRows.length) {
-        throw new Error("没有识别到结构明确的记录，请使用双列表格或明确分隔符后重试");
+        throw new Error("没有识别到可导入的英文词，请检查文档内容后重试");
       }
       elements.importFileType.textContent = result.format;
       elements.importFileName.textContent = result.fileName;
       elements.importFileDetail.textContent = `识别到 ${importRows.length} 条记录`;
+      importBookName = String(result.bookName || "").trim();
+      importBookMode = importBookName ? (findBookByName(importBookName) ? "merge" : "new") : "current";
+      renderImportBookRouting();
       renderImportRows();
       elements.importLoading.hidden = true;
       elements.importPreviewView.hidden = false;
@@ -333,14 +483,14 @@
   }
 
   function importRowStatus(row, index, seenWords) {
-    const word = String(row.word || "").trim();
+    const word = Core.cleanWord(row.word);
     const meaning = String(row.meaning || "").trim();
     if (!row.selected) return { valid: false, label: "未勾选" };
     if (!word || !meaning) return { valid: false, label: "内容不完整" };
     if (word.length > 80) return { valid: false, label: "单词超过 80 字" };
     if (meaning.length > 300) return { valid: false, label: "释义超过 300 字" };
-    const normalizedWord = word.toLocaleLowerCase();
-    if (state.words.some((item) => item.word.toLocaleLowerCase() === normalizedWord)) {
+    const normalizedWord = Core.normalizeAnswer(word);
+    if (importTargetWords().some((item) => Core.normalizeAnswer(item.word) === normalizedWord)) {
       return { valid: false, label: "词库中已存在" };
     }
     if (seenWords.has(normalizedWord)) return { valid: false, label: "文件内重复" };
@@ -405,25 +555,94 @@
     elements.importValidCount.textContent = `${validCount} 条可导入`;
     elements.confirmImportButton.disabled = validCount === 0;
     elements.confirmImportButton.textContent = validCount ? `导入 ${validCount} 条到词库` : "导入到词库";
+    const missingCount = importRows.filter((row) => row.selected && row.word && !String(row.meaning || "").trim()).length;
+    elements.autoTranslateButton.disabled = importTranslationPending || missingCount === 0;
+    elements.autoTranslateButton.textContent = importTranslationPending
+      ? "正在补全中文…"
+      : missingCount ? `自动补全中文（${missingCount} 条）` : "自动补全中文";
+  }
+
+  async function translateWordToChinese(word) {
+    const url = new URL("https://api.mymemory.translated.net/get");
+    url.searchParams.set("q", word);
+    url.searchParams.set("langpair", "en|zh-CN");
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) throw new Error(`在线翻译服务返回 ${response.status}`);
+      const payload = await response.json();
+      const meaning = String(payload && payload.responseData && payload.responseData.translatedText || "").trim();
+      if (!meaning || Core.normalizeAnswer(meaning) === Core.normalizeAnswer(word)) {
+        throw new Error("没有获得可用的中文释义");
+      }
+      return meaning;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async function autoTranslateMissingMeanings() {
+    if (importTranslationPending) return;
+    const targetIndexes = importRows
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.selected && row.word && !String(row.meaning || "").trim())
+      .map(({ index }) => index);
+    if (!targetIndexes.length) return;
+
+    importTranslationPending = true;
+    let completedCount = 0;
+    let failedCount = 0;
+    elements.importTranslationStatus.textContent = `正在补全 0 / ${targetIndexes.length} 条中文释义…`;
+    refreshImportStatuses();
+    for (const index of targetIndexes) {
+      try {
+        importRows[index].meaning = await translateWordToChinese(Core.cleanWord(importRows[index].word));
+        completedCount += 1;
+      } catch (error) {
+        failedCount += 1;
+        console.warn("自动补全中文失败：", error);
+      }
+      elements.importTranslationStatus.textContent = `正在补全 ${completedCount + failedCount} / ${targetIndexes.length} 条中文释义…`;
+    }
+    importTranslationPending = false;
+    renderImportRows();
+    elements.importTranslationStatus.textContent = failedCount
+      ? `已补全 ${completedCount} 条；${failedCount} 条未成功，请手动填写。`
+      : `已补全 ${completedCount} 条中文释义，请在导入前检查。`;
   }
 
   function confirmImport() {
     const statuses = importRowStatuses();
+    const validCount = statuses.filter((status) => status.valid).length;
+    if (!validCount) {
+      showToast("请先保留至少一条完整且不重复的单词");
+      return;
+    }
     let importedCount = 0;
+    let targetBook = importTargetBook();
+    if (importBookName && !targetBook) {
+      state = Core.addBook(state, importBookName);
+      targetBook = currentBook();
+    }
+    if (targetBook && importBookMode === "replace") {
+      state = Core.clearBookWords(state, targetBook.id);
+    }
+    const targetBookId = targetBook ? targetBook.id : currentBook().id;
     statuses.forEach((status, index) => {
       if (!status.valid) return;
       const row = importRows[index];
-      state = Core.addWord(state, row.word, row.meaning);
+      state = Core.addWord(state, row.word, row.meaning, targetBookId);
       importedCount += 1;
     });
-    if (!importedCount) return;
+    state = Core.selectBook(state, targetBookId);
     saveState();
     elements.importDialog.close();
     elements.searchInput.value = "";
     activeFilter = "all";
     elements.filterChips.forEach((chip) => chip.classList.toggle("is-active", chip.dataset.filter === "all"));
     navigate("library");
-    showToast(`已导入 ${importedCount} 个单词`);
+    showToast(`已导入 ${importedCount} 个单词到「${currentBook().name}」`);
   }
 
   function handleWordSubmit(event) {
@@ -440,6 +659,24 @@
       showToast(id ? "单词已更新" : "单词已加入词库");
     } catch (error) {
       elements.formError.textContent = error.message;
+    }
+  }
+
+  function handleBookSubmit(event) {
+    event.preventDefault();
+    try {
+      state = Core.addBook(state, elements.bookNameInput.value);
+      saveState();
+      elements.bookDialog.close();
+      elements.searchInput.value = "";
+      activeFilter = "all";
+      elements.filterChips.forEach((chip) => chip.classList.toggle("is-active", chip.dataset.filter === "all"));
+      dashboardRound = null;
+      renderDashboard();
+      renderLibrary();
+      showToast(`已切换到「${currentBook().name}」`);
+    } catch (error) {
+      elements.bookFormError.textContent = error.message;
     }
   }
 
@@ -461,17 +698,24 @@
   }
 
   function startStudy(mode = "all") {
+    const book = currentBook();
+    const bookWords = currentWords();
     const words = mode === "review"
-      ? state.words.filter((word) => Core.statusOf(word) === "review")
-      : state.words;
+      ? bookWords.filter((word) => Core.statusOf(word) === "review")
+      : bookWords;
     if (!words.length) {
-      showToast(mode === "review" ? "目前没有需要复习的单词" : "请先向词库添加单词");
-      if (!state.words.length) navigate("library");
+      showToast(mode === "review" ? `「${book.name}」目前没有需要复习的单词` : `请先向「${book.name}」添加单词`);
+      if (!bookWords.length) navigate("library");
       return;
+    }
+    const shuffledWords = [...words];
+    for (let index = shuffledWords.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [shuffledWords[index], shuffledWords[swapIndex]] = [shuffledWords[swapIndex], shuffledWords[index]];
     }
     studySession = {
       mode,
-      ids: words.map((word) => word.id),
+      ids: shuffledWords.map((word) => word.id),
       index: 0,
       known: 0,
       unknown: 0,
@@ -482,7 +726,7 @@
       known: 0,
       unknown: 0,
     };
-    elements.studyMode.textContent = mode === "review" ? "只复习生词" : "全部词汇";
+    elements.studyMode.textContent = `${book.name} · ${mode === "review" ? "复习生词" : "全部词汇"}`;
     navigate("study");
     renderStudyCard();
   }
@@ -668,6 +912,24 @@
 
   elements.routeButtons.forEach((button) => button.addEventListener("click", () => navigate(button.dataset.route)));
   [elements.headerAdd, elements.libraryAdd, elements.emptyAdd].forEach((button) => button.addEventListener("click", () => openWordDialog()));
+  elements.exportWords.addEventListener("click", exportWordList);
+  elements.newBookButton.addEventListener("click", openBookDialog);
+  elements.bookDialogClose.addEventListener("click", () => elements.bookDialog.close());
+  elements.bookForm.addEventListener("submit", handleBookSubmit);
+  elements.bookSelect.addEventListener("change", () => {
+    state = Core.selectBook(state, elements.bookSelect.value);
+    saveState();
+    dashboardRound = null;
+    recentManageMode = false;
+    recentRevealed = false;
+    selectedRecentIds.clear();
+    elements.searchInput.value = "";
+    activeFilter = "all";
+    elements.filterChips.forEach((chip) => chip.classList.toggle("is-active", chip.dataset.filter === "all"));
+    renderDashboard();
+    renderLibrary();
+    showToast(`已切换到「${currentBook().name}」`);
+  });
   elements.dialogClose.addEventListener("click", () => elements.wordDialog.close());
   elements.wordForm.addEventListener("submit", handleWordSubmit);
   elements.openImportButton.addEventListener("click", openImportDialog);
@@ -675,6 +937,17 @@
   elements.importFileInput.addEventListener("change", () => handleImportFile(elements.importFileInput.files[0]));
   elements.chooseAnotherFile.addEventListener("click", resetImportDialog);
   elements.confirmImportButton.addEventListener("click", confirmImport);
+  elements.importBookMerge.addEventListener("click", () => {
+    importBookMode = "merge";
+    renderImportBookRouting();
+    refreshImportStatuses();
+  });
+  elements.importBookReplace.addEventListener("click", () => {
+    importBookMode = "replace";
+    renderImportBookRouting();
+    refreshImportStatuses();
+  });
+  elements.autoTranslateButton.addEventListener("click", autoTranslateMissingMeanings);
   elements.fileDropZone.addEventListener("dragover", (event) => {
     event.preventDefault();
     elements.fileDropZone.classList.add("is-dragging");
@@ -761,4 +1034,5 @@
 
   renderDashboard();
   renderLibrary();
+  saveState();
 })();
